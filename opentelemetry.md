@@ -2,6 +2,8 @@
 
 Observability lets us understand a system from the outside, by letting us ask questions about that system without knowing its inner workings. 
 
+如果能够在不发布新代码（如增加一个用于调试的日志）的情况下理解任何奇怪或不确定性的状态，那么我们的系统就具备可观测性。
+
 
 
 ![2](2.png)
@@ -27,7 +29,7 @@ Observability lets us understand a system from the outside, by letting us ask qu
 - **Tracing：**Jaeger、Zipkin、SkyWalking、OpenTracing、OpenCensus
 - **Logs：**ELK、Splunk、SumoLogic、Loki、Loggly。
 
-有着五花八门的方案同时，各个方案也有着五花八门的协议格式/数据类型。不同的方案之间很难兼容/互通。与此同时，实际的业务场景中也会将各种方案混用，开发人员只能自己开发各类 Adapter 去兼容，
+有着五花八门的方案同时，各个方案也有着五花八门的协议格式/数据类型。不同的方案之间很难兼容/互通。与此同时，实际的业务场景中也会将各种方案混用，开发人员只能自己开发各类 Adapter 去兼容.
 
 # Opentelemetry是什么？
 
@@ -74,6 +76,8 @@ collection设计
 ![Unified Collection Diagram](unified-collection.png)
 
 # Opentelemetry数据类型-Signals
+
+从根本上来说，指标、日志和链路追踪只是数据类型，与可观测性无关。
 
 ## Trace
 
