@@ -29,15 +29,19 @@ Observability lets us understand a system from the outside, by letting us ask qu
 - **Tracing：**Jaeger、Zipkin、SkyWalking、OpenTracing、OpenCensus
 - **Logs：**ELK、Splunk、SumoLogic、Loki、Loggly。
 
-有着五花八门的方案同时，各个方案也有着五花八门的协议格式/数据类型。不同的方案之间很难兼容/互通。与此同时，实际的业务场景中也会将各种方案混用，开发人员只能自己开发各类 Adapter 去兼容.
+各个方案也有着五花八门的协议格式/数据类型。不同的方案之间很难兼容/互通。与此同时，实际的业务场景中也会将各种方案混用，开发人员只能自己开发各类 Adapter 去兼容.
 
 # Opentelemetry是什么？
+
+OpenTracing制定了一套平台无关、厂商无关的协议标准，使得开发人员能够方便的添加或更换底层APM的实现。遵循OpenTracing协议的产品有Jaeger、Zipkin等等。
+
+OpenCensus的最初目标为了把Go语言的Metrics采集、链路跟踪与Go语言自带的profile工具打通，统一用户的使用方式。
 
 作为 CNCF 的孵化项目，OpenTelemetry 由 OpenTracing 和 OpenCensus 项目合并而成，是一组产商无关的SDK、API 接口、工具，可用来收集、转换、发送数据到开源或者商业的可观测性后端。同时为众多开发人员带来 Metrics、Tracing、Logs 的统一标准，三者都有相同的元数据结构，可以轻松实现互相关联。
 
 ## 能做啥？
 
-- 每种语言都有产商无关的库来支持自动和手动的测量
+- 每种语言都有产商无关的库来支持自动和手动的埋点
 - 可支持多种部署方式，且与产商无关的二进制收集器
 - 一个端到端实现产生，发射，收集，处理和导出telemetry数据
 -  可通过配置将数据并行发送到多个目的地。  
@@ -49,9 +53,55 @@ OpenTelemetry 不是可观测性的后端，如Prometheus、Jaeger，不提供�
 
 # Opentelemetry设计
 
+cross-cutting concerns 横切关注点
+
+## 整体架构
+
 ![Cross cutting concerns](architecture.png)
 
-客户端设计
+API：	API包由用于插桩的横切接口组成。导入第三方库和应用程序代码的OpenTelemetry客户端的任何部分都被视为API的一部分。
+
+SDK：SDK是API的实现。在应用程序中，SDK由应用程序所有者安装和管理。注意，SDK包括额外的公共接口，这些接口不被认为是API包的一部分，因为它们不是横切关注点。这些公共接口被定义为构造函数和插件接口。应用程序所有者使用SDK构造函数;插件作者使用SDK插件接口。插桩作者绝对不能直接引用任何类型的SDK包，只能引用API。
+
+Semantic Conventions：定义被应用使用的键和值，用于描述被观察的概念、协议和操作
+
+- [Resource Conventions](https://opentelemetry.io/docs/reference/specification/resource/semantic_conventions/)
+- [Span Conventions](https://opentelemetry.io/docs/reference/specification/trace/semantic_conventions/)
+- [Metrics Conventions](https://opentelemetry.io/docs/reference/specification/metrics/semantic_conventions/)
+
+Contrib packages：OpenTelemetry项目维护一些流行的OSS项目的集成，这些项目被认为对观察现代web服务非常重要。示例API集成包括用于web框架、数据库客户端和消息队列的插装。示例SDK集成包括将遥测数据导出到流行的分析工具和遥测数据存储系统的插件。
+
+### Opentelemetry组件
+
+参照：https://opentelemetry.io/docs/concepts/components/
+
+OpenTelemetry目前由几个主要组件组成:
+
+#### Specifcation-跨语言规范
+
+描述所有实现的跨语言需求和期望。除了术语定义之外，该规范还定义了以下内容:
+
+API:定义用于生成和关联tracing、metric和log数据的数据类型和操作。
+
+SDK:为API的特定于语言的实现定义需求。这里还定义了配置、数据处理和导出概念。
+
+Data:定义遥测后端可以提供支持的OpenTelemetry协议(OTLP)和供应商无关的语义约定。
+
+#### Collector-收集、转换和导出遥测数据的工具
+
+OpenTelemetry Collector是一个与供应商无关的代理，可以接收、处理和导出遥测数据。它支持以多种格式(如OTLP、Jaeger、Prometheus以及许多商业/专有工具)接收遥测数据，并将数据发送到一个或多个后端。它还支持在导出遥测数据之前处理和过滤数据。Collector contrib packages支持更多的数据格式和供应商后端。
+
+#### Language SDKs-每种语言sdk
+
+OpenTelemetry有各种语言sdk，可以根据所选语言的OpenTelemetry API的sdk生成遥测数据，并将数据导出到首选的后端。这些sdk还允许您为公共库和框架合并自动插桩，并使用这些库和框架连接到应用程序中的手动插桩。供应商经常制作语言sdk的分发版，以使导出到后端更简单。
+
+#### Automatic Instrumentation-自动插桩和贡献包
+
+OpenTelemetry支持大量从受支持语言的流行库和框架生成相关遥测数据的组件。例如，来自HTTP库的入站和出站HTTP请求将生成关于这些请求的数据。使用自动插装可能因语言而异，一种语言可能倾向于或要求使用随应用程序加载的组件，另一种语言可能倾向于在代码库中显式地拉入一个包。
+
+将流行库编写成开箱即用的可观察对象是一个长期目标，这样就不需要引入单独的组件。
+
+## 客户端设计
 
 The SDK implementation should include the following exporters:
 
@@ -67,13 +117,13 @@ The SDK implementation should include the following exporters:
 
 ![OpenTelemetry client Design Diagram](library-design.png)
 
-collection设计
+## collection设计
 
 
 
 ![Separate Collection Diagram](separate-collection.png)
 
-![Unified Collection Diagram](unified-collection.png)
+![Opentelemetry Collection Diagram](opentelemetry-collection.png)
 
 # Opentelemetry数据类型-Signals
 
@@ -202,7 +252,7 @@ agent：与应用程序一起运行或与应用程序在同一主机上运行的
 
 gateway：一个或多个Collector实例作为一个独立的服务(例如container or deployment)运行，通常为每个集群、数据中心或区域。
 
-## 组件
+## Collection组件
 
 收集器由以下组件组成:
 
@@ -214,9 +264,13 @@ exporters:将接收到的数据发送到哪里;这些可以是推或拉的
 
 这些组件是通过pipeline启用的。可以通过YAML配置定义组件和管道的多个实例。
 
-# 示例
+# Demo示例
+
+代码：
 
 https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/examples/demo
+
+架构
 
 ![demo-arch](demo-arch.png)
 
@@ -235,3 +289,257 @@ jaeger:  http://39.105.101.198:16686/
 zipkin:  http://39.105.101.198:9411/
 
 prometheus:  http://39.105.101.198:9090/
+
+# go开发
+
+Go不像其他语言那样支持真正的自动插桩。相反，您需要依赖特定的插桩库生成遥测数据的插桩库。例如，一旦您在代码中配置了net/http的插桩库，它将自动创建跟踪入站和出站请求的span。
+
+| Tracing | Metrics | Logging             |
+| ------- | ------- | ------------------- |
+| Stable  | Alpha   | Not Yet Implemented |
+
+代码参照：https://opentelemetry.io/docs/instrumentation/go/getting-started/
+
+## API定义遥测数据如何生成
+
+设计到两个包：
+
+```sh
+go get go.opentelemetry.io/otel \
+       go.opentelemetry.io/otel/trace
+```
+
+```go
+package fib
+
+import (
+	"context"
+	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"io"
+	"log"
+	"strconv"
+)
+
+// name is the Tracer name used to identify this instrumentation library.
+// Using the full-qualified package name
+const name = "fib"
+
+// App is a Fibonacci computation application.
+type App struct {
+	r io.Reader
+	l *log.Logger
+}
+
+// NewApp returns a new App.
+func NewApp(r io.Reader, l *log.Logger) *App {
+	return &App{r: r, l: l}
+}
+
+// Run starts polling users for Fibonacci number requests and writes results.
+func (a *App) Run(ctx context.Context) error {
+	for {
+		// Each execution of the run loop, we should get a new "root" span and context.
+		// The span is created using a Tracer from the global TracerProvider
+		// In OpenTelemetry Go the span relationships are defined explicitly with a context.Context
+		newCtx, span := otel.Tracer(name).Start(ctx, "Run")
+
+		n, err := a.Poll(newCtx)
+		if err != nil {
+			span.End()
+			return err
+		}
+
+		a.Write(newCtx, n)
+		span.End()
+	}
+}
+
+// Poll asks a user for input and returns the request.
+func (a *App) Poll(ctx context.Context) (uint, error) {
+	//Similar to the Run method instrumentation, this adds a span to the method to track the computation performed
+	_, span := otel.Tracer(name).Start(ctx, "Poll")
+	defer span.End()
+	a.l.Print("What Fibonacci number would you like to know: ")
+
+	var n uint
+	_, err := fmt.Fscanf(a.r, "%d\n", &n)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return 0, err
+	}
+
+	// Store n as a string to not overflow an int64.
+	nStr := strconv.FormatUint(uint64(n), 10)
+	// this attribute is something you can add when you think a user of your application will want to see the state or details about the run environment when looking at telemetry.
+	span.SetAttributes(attribute.String("request.n", nStr))
+	return n, err
+}
+
+// Write writes the n-th Fibonacci number back to the user.
+func (a *App) Write(ctx context.Context, n uint) {
+	// This method is instrumented with two spans. One to track the Write method itself, and another to track the call to the core logic with the Fibonacci function.
+	var span trace.Span
+	ctx, span = otel.Tracer(name).Start(ctx, "Write")
+	defer span.End()
+
+	f, err := func(ctx context.Context) (uint64, error) {
+		_, span := otel.Tracer(name).Start(ctx, "Fibonacci")
+		defer span.End()
+		f, err := Fibonacci(n)
+		// include errors returned to a user in the telemetry data
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		return f, nil
+	}(ctx)
+
+	if err != nil {
+		a.l.Printf("Fibonacci(%d): %v\n", n, err)
+	} else {
+		a.l.Printf("Fibonacci(%d) = %d\n", n, f)
+	}
+}
+```
+
+## SDK安装
+
+OpenTelemetry Go项目提供了一个SDK包， [`go.opentelemetry.io/otel/sdk`](https://pkg.go.dev/go.opentelemetry.io/otel/sdk). 它实现了API并遵循OpenTelemetry规范。
+
+安装trace STDOUT导出器和SDK。
+
+```sh
+$ go get go.opentelemetry.io/otel/sdk \
+         go.opentelemetry.io/otel/exporters/stdout/stdouttrace
+```
+
+- Creating a Console Exporter
+
+- Creating a Resource
+
+- Installing a Tracer Provider 
+
+
+
+```go
+package main
+
+import (
+	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"io"
+	"log"
+	fib "opentelemetry-fib/fib"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+)
+
+func main() {
+	l := log.New(os.Stdout, "", 0)
+
+	// Write telemetry data to a file.
+	f, err := os.Create("traces.yaml")
+	if err != nil {
+		l.Fatal(err)
+	}
+
+	exp, err := newExporter(f)
+	if err != nil {
+		l.Fatal(err)
+	}
+
+	// You have your application instrumented to produce telemetry data and you have an exporter to send that data to the console, but how are they connected?
+	// The pipelines that receive and ultimately transmit data to exporters are called SpanProcessor
+	// This is done with a BatchSpanProcessor when it is passed to the trace.WithBatcher option. Batching data is a good practice and will help not overload systems downstream.
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exp), //configured to have multiple span processors
+		trace.WithResource(newResource()),
+	)
+	// you are deferring a function to flush and stop it
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			l.Fatal(err)
+		}
+	}()
+	//registering it as the global OpenTelemetry TracerProvider.
+	otel.SetTracerProvider(tp)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+
+	errCh := make(chan error)
+	app := fib.NewApp(os.Stdin, l)
+	go func() {
+		errCh <- app.Run(context.Background())
+	}()
+
+	select {
+	case <-sigCh:
+		l.Println("\ngoodbye")
+		return
+	case err := <-errCh:
+		if err != nil {
+			l.Fatal(err)
+		}
+	}
+}
+
+// newExporter returns a console exporter.
+// The SDK connects telemetry from the OpenTelemetry API to exporters.
+// Exporters are packages that allow telemetry data to be emitted somewhere - either to the console (which is what we’re doing here),
+// or to a remote system or collector for further analysis and/or enrichment
+// OpenTelemetry supports a variety of exporters through its ecosystem including popular open source tools like Jaeger, Zipkin, and Prometheus.
+func newExporter(w io.Writer) (trace.SpanExporter, error) {
+	return stdouttrace.New(
+		stdouttrace.WithWriter(w),
+		// Use human-readable output.
+		stdouttrace.WithPrettyPrint(),
+		// Do not print timestamps for the demo.
+		stdouttrace.WithoutTimestamps(),
+	)
+}
+
+// newResource returns a resource describing this application.
+// The catch is, you need a way to identify what service, or even what service instance, that data is coming from.
+// OpenTelemetry uses a Resource to represent the entity producing telemetry.
+func newResource() *resource.Resource {
+	r, _ := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("fib"),
+			semconv.ServiceVersionKey.String("v0.1.0"),
+			attribute.String("environment", "demo"),
+		),
+	)
+	return r
+}
+```
+
+
+
+# TODO
+
+1、go代码实例
+
+2、java的注入，中间件
+
+3、trace和metric关联
+
+
+
+https://opentelemetry.io/docs/instrumentation/go/libraries/
+
+https://github.com/open-telemetry/opentelemetry-go/tree/main/example/fib
