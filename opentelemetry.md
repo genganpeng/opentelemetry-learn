@@ -125,6 +125,8 @@ The SDK implementation should include the following exporters:
 
 ![Opentelemetry Collection Diagram](opentelemetry-collection.png)
 
+![image-20220920163801182](collector-arch.png)
+
 # Opentelemetry数据类型-Signals
 
 从根本上来说，指标、日志和链路追踪只是数据类型，与可观测性无关。
@@ -1221,9 +1223,136 @@ $ export OTEL_RESOURCE_ATTRIBUTES=service.name=java_grpc_server
 
 ![image-20220919195738740](javademo-2.png)
 
-# TODO
+## 自动插桩
 
-2、java的注入，中间件
+Java的自动插装使用Java代理JAR，该JAR可以附加到任何Java 8+应用程序。它动态地注入字节码，从许多流行的库和框架捕获遥测。它可以用于在应用程序或服务的“边缘”捕获遥测数据，如入站请求、出站HTTP调用、数据库调用等。
+
+### 设置
+
+1. Download [opentelemetry-javaagent.jar](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar) from [Releases](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases) of the `opentelemetry-java-instrumentation` repo. The JAR file contains the agent and all automatic instrumentation packages.
+
+2. Place the JAR in your preferred directory and launch it with your app:
+
+   ```console
+   $ java -javaagent:path/to/opentelemetry-javaagent.jar -jar myapp.jar
+   ```
+
+### 配置agent
+
+代理可以从以下一个或多个源使用配置(从最高优先级到最低优先级排序):
+
+- system properties
+- environment variables
+- the [configuration file](https://opentelemetry.io/docs/instrumentation/java/automatic/agent-config/#configuration-file)
+- the [`ConfigPropertySource`](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/javaagent-extension-api/src/main/java/io/opentelemetry/javaagent/extension/config/ConfigPropertySource.java) SPI
+
+
+
+One option is to pass configuration properties via the `-D` flag. In this example, a service name and zipkin exporter for traces are configured:
+
+```sh
+java -javaagent:path/to/opentelemetry-javaagent.jar \
+     -Dotel.service.name=your-service-name \
+     -Dotel.traces.exporter=zipkin \
+     -jar myapp.jar
+```
+
+You can also use environment variables to configure the agent:
+
+```sh
+OTEL_SERVICE_NAME=your-service-name \
+OTEL_TRACES_EXPORTER=zipkin \
+java -javaagent:path/to/opentelemetry-javaagent.jar \
+     -jar myapp.jar
+```
+
+You can also supply a Java properties file and load configuration values from there:
+
+```sh
+java -javaagent:path/to/opentelemetry-javaagent.jar \
+     -Dotel.javaagent.configuration-file=path/to/properties/file.properties \
+     -jar myapp.jar
+```
+
+or
+
+```sh
+OTEL_JAVAAGENT_CONFIGURATION_FILE=path/to/properties/file.properties \
+java -javaagent:path/to/opentelemetry-javaagent.jar \
+     -jar myapp.jar
+```
+
+您可以通过设置以下属性来启用 [extensions](https://github.com/open-telemetry/opentelemetry-java-instrumentation/tree/main/examples/extension#readme):
+
+**System property**: `otel.javaagent.extensions`
+
+**Environment variable**: `OTEL_JAVAAGENT_EXTENSIONS`
+
+### SDK自动配置
+
+下面是这些文档的一些快速链接，用于SDK和agent的特定部分的配置选项:
+
+- Exporters
+  - [OTLP exporter (both span and metric exporters)](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#otlp-exporter-both-span-and-metric-exporters)
+  - [Jaeger exporter](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#jaeger-exporter)
+  - [Zipkin exporter](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#zipkin-exporter)
+  - [Prometheus exporter](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#prometheus-exporter)
+  - [Logging exporter](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#logging-exporter)
+- [Trace context propagation](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#propagator)
+- [OpenTelemetry Resource and service name](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#opentelemetry-resource)
+- [Batch span processor](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#batch-span-processor)
+- [Sampler](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#sampler)
+- [Span limits](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#span-limits)
+- [Using SPI to further configure the SDK](https://github.com/open-telemetry/opentelemetry-java/tree/main/sdk-extensions/autoconfigure/README.md#customizing-the-opentelemetry-sdk)
+
+#### 常见插桩配置
+
+##### Peer service name
+
+##### DB statement sanitization
+
+##### Capturing HTTP request and response headers
+
+#### 抑制特定auto-instrumentation
+
+### 支持的库、框架、应用程序服务和jvm
+
+支持很多流行组件支持自动插桩。参见[Supported libraries, frameworks, application services, and JVMs](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/docs/supported-libraries.md).
+
+### 排错
+
+-Dotel.javaagent.debug=true，打开agent的debug日志。
+
+### 注解
+
+对于大多数用户来说，开箱即用的插桩就完全足够了，不需要再做什么。然而，有时用户希望为自己的自定义代码创建span，而不需要做太多的代码更改。
+
+参考文档： https://opentelemetry.io/docs/instrumentation/java/automatic/annotations/
+
+```xml
+<dependencies>
+  <dependency>
+    <groupId>io.opentelemetry.instrumentation</groupId>
+    <artifactId>opentelemetry-instrumentation-annotations</artifactId>
+    <version>1.18.0-alpha</version>
+  </dependency>
+</dependencies>
+```
+
+```java
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+
+public class MyClass {
+  @WithSpan
+  public void myMethod() {
+      <...>
+  }
+}
+```
+
+
+
+# TODO
 
 3、trace和metric关联
 
