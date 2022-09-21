@@ -125,7 +125,7 @@ The SDK implementation should include the following exporters:
 
 ![Opentelemetry Collection Diagram](opentelemetry-collection.png)
 
-![image-20220920163801182](collector-arch.png)
+
 
 # Opentelemetry数据类型-Signals
 
@@ -253,6 +253,10 @@ Collector提供了产商无关的数据接受、处理、导出的telemetry的�
 agent：与应用程序一起运行或与应用程序在同一主机上运行的Collector实例（二进制、sidecar、daemonset）
 
 gateway：一个或多个Collector实例作为一个独立的服务(例如container or deployment)运行，通常为每个集群、数据中心或区域。
+
+## 架构
+
+![image-20220920163801182](collector-arch.png)
 
 ## Collection组件
 
@@ -1155,15 +1159,15 @@ message HelloReply {
 
 运行客户端和服务器端：client output “Hello world”.
 
-## 代码插桩
+### 代码插桩
 
-### 下载
+#### 下载
 
 Download [opentelemetry-javaagent.jar](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar) from [Releases](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases)
 
 jar包中包含了agent和所有自动插桩的代码
 
-### 配置插桩
+#### 配置插桩
 
 使用适合您的shell/终端环境的表示法，设置和导出指定Java代理JAR和控制台trace导出器的环境变量
 
@@ -1171,7 +1175,7 @@ jar包中包含了agent和所有自动插桩的代码
 $ export JAVA_OPTS="-javaagent:/home/gengap/IdeaProjects/opentelemetry-javaagent.jar"
 ```
 
-#### 导出到控制台
+##### 导出到控制台
 
 ```shell
 $ export OTEL_TRACES_EXPORTER=logging
@@ -1214,7 +1218,7 @@ INFO: Greeting: Hello world
 
 ```
 
-#### 导出到collector
+##### 导出到collector
 
 ```shell
 $ export OTEL_EXPORTER_OTLP_ENDPOINT=http://39.105.101.198:4317
@@ -1319,10 +1323,6 @@ java -javaagent:path/to/opentelemetry-javaagent.jar \
 
 支持很多流行组件支持自动插桩。参见[Supported libraries, frameworks, application services, and JVMs](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/docs/supported-libraries.md).
 
-### 排错
-
--Dotel.javaagent.debug=true，打开agent的debug日志。
-
 ### 注解
 
 对于大多数用户来说，开箱即用的插桩就完全足够了，不需要再做什么。然而，有时用户希望为自己的自定义代码创建span，而不需要做太多的代码更改。
@@ -1350,7 +1350,19 @@ public class MyClass {
 }
 ```
 
+### 排错
 
+-Dotel.javaagent.debug=true，打开agent的debug日志。
+
+## 手动插桩
+
+想要使用OpenTelemetry导出遥测数据的库必须只依赖OpenTelemetry -api包，而不应该配置或依赖OpenTelemetry SDK。SDK配置必须由应用程序提供，应用程序也应该依赖于OpenTelemetry - SDK包，或者OpenTelemetry API的任何其他实现。这样，只有用户应用程序为库配置了，库才能获得真正的实现。
+
+## 其他例子
+
+### 手动插桩的例子
+
+对于全功能的手动插桩示例，参见[Java OpenTelemetry Examples](https://github.com/open-telemetry/opentelemetry-java-docs#java-opentelemetry-examples)
 
 # TODO
 
