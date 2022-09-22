@@ -37,6 +37,8 @@ OpenTracing制定了一套平台无关、厂商无关的协议标准，使得开
 
 OpenCensus的最初目标为了把Go语言的Metrics采集、链路跟踪与Go语言自带的profile工具打通，统一用户的使用方式。
 
+OpenTracing 和 OpenCensus，这两套框架都有很多追随者，而且二者都想统一对方。但是从功能和特性上来看，它们各有优缺点，半斤八两。所谓天下大势，合久必分，分久必合，既然没办法分个高低，那统一就是大势所趋。于是， OpenTelemetry 横空出世。
+
 作为 CNCF 的孵化项目，OpenTelemetry 由 OpenTracing 和 OpenCensus 项目合并而成，是一组产商无关的SDK、API 接口、工具，可用来收集、转换、发送数据到开源或者商业的可观测性后端。同时为众多开发人员带来 Metrics、Tracing、Logs 的统一标准，三者都有相同的元数据结构，可以轻松实现互相关联。
 
 ## 能做啥？
@@ -79,7 +81,7 @@ OpenTelemetry目前由几个主要组件组成:
 
 #### Specifcation-跨语言规范
 
-描述所有实现的跨语言需求和期望。除了术语定义之外，该规范还定义了以下内容:
+跨语言规范描述了所有实现的跨语言要求和数据模型，包括遥测客户端内部实现所需要的标准和定义，也包含与外部通信时需要实现的协议规范。除了术语定义之外，该规范还定义了以下内容:
 
 API:定义用于生成和关联tracing、metric和log数据的数据类型和操作。
 
@@ -246,29 +248,33 @@ OpenTelemetry 还提供了 Baggage 来传播键值对。Baggage 用于索引一�
 
 Collector提供了产商无关的数据接受、处理、导出的telemetry的数据能力，不需要运行多个Collector来支持多个开源的数据格式后端如prometheus和jaeger。
 
-## 部署方式
 
-提供了一个二进包两种部署方式
-
-agent：与应用程序一起运行或与应用程序在同一主机上运行的Collector实例（二进制、sidecar、daemonset）
-
-gateway：一个或多个Collector实例作为一个独立的服务(例如container or deployment)运行，通常为每个集群、数据中心或区域。
 
 ## 架构
 
 ![image-20220920163801182](collector-arch.png)
 
+
+
 ## Collection组件
 
 收集器由以下组件组成:
 
-receivers:如何将数据放入收集器;这些可以是推或拉的
+receivers: 负责按照对应的协议格式监听和接收遥测数据，并把数据转给一个或者多个 Processor。
 
-processors:如何处理接收到的数据
+processors:负责加工处理遥测数据，如丢弃数据、增加信息、转批处理等，并把数据传递给下一个 Processor 或者一个或多个 Exporter。
 
-exporters:将接收到的数据发送到哪里;这些可以是推或拉的
+exporters:负责把数据发送给下一个接收端（一般是指后端），比如将指标数据存储到 Prometheus 中。
 
 这些组件是通过pipeline启用的。可以通过YAML配置定义组件和管道的多个实例。
+
+## 部署方式
+
+提供了一个二进包两种部署方式
+
+agent：与应用程序一起运行或与应用程序在同一主机上运行的Collector实例（二进制、sidecar、daemonset）。它是把 Collector 部署在应用程序所在的主机内（在 Kubernetes 环境中，可以使用 DaemonSet），或者是在 Kubernetes 环境中通过边车（Sidecar）的方式进行部署。这样，应用采集到的遥测数据可以直接传递给 Collector。
+
+gateway：一个或多个Collector实例作为一个独立的服务(例如container or deployment)运行，通常为每个集群、数据中心或区域。
 
 # Demo示例
 
@@ -1349,6 +1355,82 @@ public class MyClass {
   }
 }
 ```
+
+### 日志MDC (Mapped Diagnostic Context)
+
+https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/docs/logger-mdc-instrumentation.md
+
+在上面的例子中添加日志
+
+pom.xml
+
+```xml
+<properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <grpc.version>1.49.0</grpc.version><!-- CURRENT_GRPC_VERSION -->
+    <protobuf.version>3.21.1</protobuf.version>
+    <protoc.version>3.21.1</protoc.version>
+    <!-- required for jdk9 -->
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+    <opentelemetry.version>1.18.0</opentelemetry.version>
+    <slf4j-api.version>1.7.25</slf4j-api.version>
+    <logback.version>1.1.7</logback.version>
+</properties>
+<!-- log start -->
+<dependency>
+    <groupId>org.slf4j</groupId>
+    <artifactId>slf4j-api</artifactId>
+    <version>${slf4j-api.version}</version>
+</dependency>
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-core</artifactId>
+    <version>${logback.version}</version>
+</dependency>
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-access</artifactId>
+    <version>${logback.version}</version>
+</dependency>
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-classic</artifactId>
+    <version>${logback.version}</version>
+</dependency>
+```
+
+logback.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[%d{yyyy/MM/dd HH:mm:ss.SSS}][%p][%logger{0}:%L] [traceId=%X{trace_id} spanId=%X{span_id}] %m%n</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="console" />
+    </root>
+
+</configuration>
+```
+
+添加java代码
+
+```java
+  private static final Logger logger = LoggerFactory.getLogger(HelloWorldServer.class.getName());
+
+      logger.info("say Hello!");
+
+```
+
+![image-20220922193710529](log.png)
 
 ### 排错
 
